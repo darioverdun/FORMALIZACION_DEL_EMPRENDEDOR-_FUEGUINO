@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formalización del Emprendedor Fueguino</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: url('/static/Bandera_de_la_Provincia_de_Tierra_del_Fuego.svg.png') no-repeat center center fixed;
+            background-size: cover;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .chat-container {
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            margin-top: 20px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .system-message {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .user-message {
+            background-color: #f5f5f5;
+            border-left: 4px solid #9e9e9e;
+            text-align: right;
+        }
+        .options-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background-color: #2196f3;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #1976d2;
+        }
+        input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .result {
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        #reiniciar {
+            margin-top: 20px;
+            background-color: #f44336;
+        }
+        #reiniciar:hover {
+            background-color: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1>Formalización del Emprendedor Fueguino</h1>
+        <div id="chat-messages"></div>
+        <div id="options-container" class="options-container"></div>
+        <button id="reiniciar" style="display: none;">Reiniciar Consulta</button>
+    </div>
+
+    <script>
+        let sesionId = null;
+        let chatHistory = [];
+
+        async function iniciarSesion() {
+            try {
+                const response = await fetch('/iniciar_sesion', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                sesionId = data.sesion_id;
+                mostrarPregunta(data.siguiente_pregunta);
+            } catch (error) {
+                console.error('Error al iniciar sesión:', error);
+            }
+        }
+
+        function mostrarMensaje(mensaje, tipo) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${tipo}-message`;
+            messageDiv.textContent = mensaje;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            chatHistory.push({ mensaje, tipo });
+        }
+
+        function mostrarPregunta(pregunta) {
+            mostrarMensaje(pregunta.texto, 'system');
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+
+            if (pregunta.tipo === 'opcion') {
+                pregunta.opciones.forEach(opcion => {
+                    const button = document.createElement('button');
+                    button.textContent = opcion;
+                    button.onclick = () => enviarRespuesta(pregunta.id, opcion);
+                    optionsContainer.appendChild(button);
+                });
+            } else if (pregunta.tipo === 'numero') {
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.step = '0.01';
+                input.placeholder = 'Ingresa el valor numérico';
+                
+                const button = document.createElement('button');
+                button.textContent = 'Enviar';
+                button.onclick = () => {
+                    const valor = parseFloat(input.value);
+                    if (!isNaN(valor)) {
+                        enviarRespuesta(pregunta.id, '', valor);
+                    }
+                };
+
+                optionsContainer.appendChild(input);
+                optionsContainer.appendChild(button);
+            }
+        }
+
+        async function enviarRespuesta(preguntaId, respuesta, valorNumerico = null) {
+            if (respuesta) {
+                mostrarMensaje(respuesta, 'user');
+            } else if (valorNumerico !== null) {
+                mostrarMensaje(valorNumerico.toString(), 'user');
+            }
+
+            try {
+                const response = await fetch(`/responder/${sesionId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        pregunta_id: preguntaId,
+                        respuesta: respuesta,
+                        valor_numerico: valorNumerico
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.tipo === 'pregunta') {
+                    mostrarPregunta(data.pregunta);
+                } else if (data.tipo === 'resultado') {
+                    mostrarResultado(data);
+                }
+            } catch (error) {
+                console.error('Error al enviar respuesta:', error);
+            }
+        }
+
+        function mostrarResultado(data) {
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'result';
+            
+            let resultadoHTML = `<h2>${data.mensaje}</h2>`;
+            if (data.detalles) {
+                resultadoHTML += `
+                    <p><strong>Categoría:</strong> ${data.detalles.categoria}</p>
+                    <p><strong>Tipo de Actividad:</strong> ${data.detalles.tipo_actividad}</p>
+                    <h3>Pagos Nacionales:</h3>
+                    <ul>
+                        <li>Impuesto: $${data.detalles.pagos_nacionales.impuesto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</li>
+                        <li>SIPA: ${typeof data.detalles.pagos_nacionales.sipa === 'string' ? data.detalles.pagos_nacionales.sipa : '$' + data.detalles.pagos_nacionales.sipa.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</li>
+                        <li>Obra Social: ${typeof data.detalles.pagos_nacionales.obra_social === 'string' ? data.detalles.pagos_nacionales.obra_social : '$' + data.detalles.pagos_nacionales.obra_social.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</li>
+                        <li><strong>Total Nacional: $${data.detalles.total_nacional.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></li>
+                    </ul>
+                `;
+                
+                if (data.detalles.pagos_provinciales && Object.keys(data.detalles.pagos_provinciales).length > 0) {
+                    resultadoHTML += `
+                        <h3>Pagos Provinciales:</h3>
+                        <ul>
+                            <li>AREF: $${data.detalles.pagos_provinciales.aref.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</li>
+                            <li><strong>Total Provincial: $${data.detalles.total_provincial.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></li>
+                        </ul>
+                    `;
+                }
+                
+                resultadoHTML += `
+                    <h3>Total General: $${data.detalles.total_general.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</h3>
+                    <div style="margin-top: 30px; padding: 20px; background-color: #fff3e0; border-left: 4px solid #ff9800; border-radius: 4px;">
+                        <h3 style="color: #e65100;">Importante – Información a tener en cuenta antes de inscribirse</h3>
+                        <p>Antes de avanzar con el proceso de inscripción, es fundamental que sepa que al registrarse en el sistema formal (por ejemplo, como trabajador autónomo o bajo el régimen de Monotributo), se considerará que usted comienza a generar ingresos formales.</p>
+                        <p>Por este motivo, podría dejar de percibir beneficios sociales destinados exclusivamente a personas sin ingresos registrados, tales como:</p>
+                        <ul>
+                            <li>Asignación Universal por Hijo (AUH)</li>
+                            <li>Planes o programas sociales de asistencia directa</li>
+                            <li>Otras ayudas económicas reservadas para personas sin empleo formal o sin ingresos</li>
+                        </ul>
+                        <p>Le recomendamos evaluar esta situación con cuidado y, en caso de dudas, consultar con un organismo competente</p>
+                        <p>Este sistema experto no reemplaza el asesoramiento profesional, pero está diseñado para brindarle orientación inicial confiable y transparente.</p>
+                    </div>
+                `;
+            }
+            resultDiv.innerHTML = resultadoHTML;
+            optionsContainer.appendChild(resultDiv);
+
+            // Mostrar el botón de reinicio
+            document.getElementById('reiniciar').style.display = 'block';
+        }
+
+        document.getElementById('reiniciar').onclick = async () => {
+            try {
+                const response = await fetch(`/reiniciar/${sesionId}`, {
+                    method: 'GET'
+                });
+                const data = await response.json();
+                
+                // Limpiar el chat
+                document.getElementById('chat-messages').innerHTML = '';
+                document.getElementById('options-container').innerHTML = '';
+                document.getElementById('reiniciar').style.display = 'none';
+                
+                // Iniciar nueva sesión
+                sesionId = data.sesion_id;
+                mostrarPregunta(data.siguiente_pregunta);
+            } catch (error) {
+                console.error('Error al reiniciar:', error);
+            }
+        };
+
+        // Iniciar el sistema al cargar la página
+        iniciarSesion();
+    </script>
+</body>
+</html>
